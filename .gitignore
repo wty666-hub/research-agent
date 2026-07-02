@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+*.egg-info/
+
+# 环境变量（包含 API Key，绝对不能提交）
+.env
+
+# 向量数据库（本地数据，不提交）
+data/
+chroma_db/
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# 下载的论文
+papers/
+*.pdf
+
+# 系统文件
+.DS_Store
+Thumbs.db

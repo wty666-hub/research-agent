@@ -1,0 +1,23 @@
+# LangGraph - Agent 状态图框架
+langgraph>=0.2.0
+
+# OpenAI SDK - 兼容 DeepSeek API
+openai>=1.0.0
+
+# ChromaDB - 向量数据库（长期记忆）
+chromadb>=0.5.0
+
+# Sentence Transformers - ChromaDB 本地 embedding 所需
+sentence-transformers>=2.2.0
+
+# Streamlit - Web 聊天界面
+streamlit>=1.29.0
+
+# PyMuPDF - PDF 文本提取
+PyMuPDF>=1.23.0
+
+# Requests - HTTP 请求（arXiv API）
+requests>=2.28.0
+
+# python-dotenv - .env 文件管理
+python-dotenv>=1.0.0
