@@ -21,10 +21,12 @@ class Config:
     DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
     # Agent 设置
-    MAX_STEPS: int = 10           # ReAct 循环最大步数
+    MAX_STEPS: int = 30           # ReAct 循环最大步数
     MAX_SEARCHES: int = 3         # 最大搜索次数
     MAX_PAPERS_TO_READ: int = 5   # 最多深入阅读的论文数
     LLM_TEMPERATURE: float = 0.1  # 决策用低温，保证稳定
+    READ_MODE: str = os.getenv("READ_MODE", "full")  # "full"=下载PDF全文, "abstract"=仅读摘要
+    SEARCH_CACHE_TTL: int = 600   # 搜索结果缓存有效期（秒），默认 10 分钟
 
     # 路径
     BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))

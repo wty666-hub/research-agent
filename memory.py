@@ -35,42 +35,37 @@ class ShortTermMemory:
         self.paper_notes: dict[str, str] = {}
         self.observation: str = ""
         self.step_count: int = 0
+        self.comparison_done: bool = False  # 是否已完成横向对比
+        self.all_read: bool = False  # 所有筛选论文是否已读完
 
     def add_message(self, role: str, content: str) -> None:
         """添加一条消息到对话历史"""
         self.messages.append({"role": role, "content": content})
 
-    def increment_step(self) -> int:
-        """步数+1，返回当前步数"""
-        self.step_count += 1
-        return self.step_count
-
-    def is_over_limit(self) -> bool:
-        """检查是否超过最大步数限制"""
-        return self.step_count >= Config.MAX_STEPS
-
-    def exceeded_searches(self) -> bool:
-        """检查是否超过最大搜索次数（通过观察过往 message 中 search 次数）"""
-        search_count = sum(
-            1 for m in self.messages
-            if m.get("role") == "tool" and "search_papers" in str(m.get("content", ""))
-        )
-        return search_count >= Config.MAX_SEARCHES
-
     def get_state_context(self) -> str:
-        """
-        生成当前状态的文本摘要，供 LLM 决策时参考
-        """
-        context = f"""
+        """生成当前状态的文本摘要"""
+        return f"""
 - 用户目标: {self.user_goal}
-- 已执行步数: {self.step_count}/{Config.MAX_STEPS}
 - 搜索到的论文数: {len(self.papers)}
 - 筛选后的论文数: {len(self.selected_papers)}
 - 已读论文数: {len(self.paper_notes)}
-- 最近一次操作结果: {self.observation[:500] if self.observation else '无'}
-- 对话轮数: {len([m for m in self.messages if m['role'] == 'user'])}
 """
-        return context
+
+    def to_dict(self) -> dict:
+        """序列化为 dict（用于保存到对话历史）"""
+        return {
+            "user_goal": self.user_goal,
+            "papers": self.papers,
+            "selected_papers": self.selected_papers,
+            "paper_notes": self.paper_notes,
+        }
+
+    def from_dict(self, data: dict) -> None:
+        """从 dict 恢复状态"""
+        self.user_goal = data.get("user_goal", "")
+        self.papers = data.get("papers", [])
+        self.selected_papers = data.get("selected_papers", [])
+        self.paper_notes = data.get("paper_notes", {})
 
 
 # ============================================================
@@ -85,8 +80,8 @@ class VectorStore:
 
     def __init__(self):
         self.client = chromadb.PersistentClient(path=Config.CHROMA_DIR)
-        # 使用 text-embedding-3-small 的代理（此处暂用 Chroma 内置 MiniLM 做本地 embedding，
-        # 后续替换为 DeepSeek Embedding API）
+        # 使用 SentenceTransformer embedding（第一次需要从 HuggingFace 下载模型，约 80MB）
+        # 下载后会缓存到本地，之后就不需要联网了。请确保 VPN 已开启。
         self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name="all-MiniLM-L6-v2"
         )
