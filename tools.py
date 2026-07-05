@@ -80,6 +80,24 @@ def _cached_search_papers(query: str, max_results: int = 10) -> str:
     return result
 
 
+def _extract_github_urls(text: str) -> list[str]:
+    """从文本中提取 GitHub 仓库 URL"""
+    pattern = r'https?://github\.com/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._/-]*)?'
+    urls = re.findall(pattern, text)
+    # 去重，过滤掉常见的非仓库链接（如 github.com/features）
+    seen = set()
+    result = []
+    for u in urls:
+        # 去掉末尾标点符号
+        u = re.sub(r'[.,;:!?)\]]+$', '', u)
+        # 过滤掉太短的（如只到用户名级别的）
+        parts = u.replace('https://github.com/', '').split('/')
+        if len(parts) >= 2 and u not in seen:
+            seen.add(u)
+            result.append(u)
+    return result
+
+
 def _clean_json(text: str) -> str:
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text)
@@ -116,6 +134,23 @@ def search_papers(query: str, max_results: int = 10) -> str:
                 "url": f"https://arxiv.org/abs/{arxiv_id}",
                 "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}.pdf",
             })
+
+        # 日期范围过滤
+        if Config.PAPER_MIN_YEAR > 0 or Config.PAPER_MAX_YEAR > 0:
+            filtered = []
+            for p in papers:
+                try:
+                    year = int(p["published"][:4])
+                except (ValueError, IndexError):
+                    filtered.append(p)  # 无法解析年份的保留
+                    continue
+                if Config.PAPER_MIN_YEAR > 0 and year < Config.PAPER_MIN_YEAR:
+                    continue
+                if Config.PAPER_MAX_YEAR > 0 and year > Config.PAPER_MAX_YEAR:
+                    continue
+                filtered.append(p)
+            papers = filtered
+
         if not papers:
             return json.dumps({"status": "empty", "message": f"未找到相关论文，建议换关键词。", "papers": []}, ensure_ascii=False)
         return json.dumps({"status": "success", "count": len(papers), "papers": papers}, ensure_ascii=False)
@@ -251,6 +286,11 @@ def read_paper(paper: dict, pre_downloaded_text: str = None) -> str:
                 full_text = f"[下载异常，使用摘要] {summary}"
         else:
             full_text = f"[无 PDF 链接，使用摘要] {summary}"
+
+    # 从原文中自动提取 GitHub URL
+    github_urls = _extract_github_urls(full_text)
+    if github_urls:
+        full_text += f"\n\n[自动检测到以下开源代码仓库]\n" + "\n".join(github_urls)
 
     system_prompt = SUMMARIZE_PROMPT % (title, authors, published, full_text)
     notes = _call_llm(system_prompt, "请生成结构化笔记。", temperature=0.3)

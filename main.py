@@ -147,13 +147,23 @@ if prompt := st.chat_input("输入研究主题..."):
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        with st.spinner("思考中..."):
-            try:
-                reply = agent.run(prompt)
-                st.markdown(reply)
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-            except Exception as e:
-                st.error(f"出错: {e}")
+        try:
+            # 进度占位
+            progress_placeholder = st.empty()
+            # 流式输出
+            reply_placeholder = st.empty()
+            full_reply = ""
+
+            def update_progress(msg):
+                progress_placeholder.info(msg)
+
+            for token in agent.run_stream(prompt, progress_callback=update_progress):
+                full_reply += token
+                reply_placeholder.markdown(full_reply)
+            progress_placeholder.success("✅ 完成")
+            st.session_state.messages.append({"role": "assistant", "content": full_reply})
+        except Exception as e:
+            st.error(f"出错: {e}")
     st.rerun()
 
 # 自动保存对话历史到本地文件

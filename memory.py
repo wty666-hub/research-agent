@@ -37,6 +37,7 @@ class ShortTermMemory:
         self.step_count: int = 0
         self.comparison_done: bool = False  # 是否已完成横向对比
         self.all_read: bool = False  # 所有筛选论文是否已读完
+        self.kb_papers: list[dict] = []  # 知识库中查到的相关已读论文
 
     def add_message(self, role: str, content: str) -> None:
         """添加一条消息到对话历史"""

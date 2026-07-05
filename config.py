@@ -27,6 +27,8 @@ class Config:
     LLM_TEMPERATURE: float = 0.1  # 决策用低温，保证稳定
     READ_MODE: str = os.getenv("READ_MODE", "full")  # "full"=下载PDF全文, "abstract"=仅读摘要
     SEARCH_CACHE_TTL: int = 600   # 搜索结果缓存有效期（秒），默认 10 分钟
+    PAPER_MIN_YEAR: int = int(os.getenv("PAPER_MIN_YEAR", "0"))  # 论文最早年份（0=不限）
+    PAPER_MAX_YEAR: int = int(os.getenv("PAPER_MAX_YEAR", "0"))  # 论文最晚年年份（0=不限）
 
     # 路径
     BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))
