@@ -215,6 +215,44 @@ class ResearchAgent:
             # LLM 挂了就当追问，走快速通道
             return "followup"
 
+    def _search_with_fallback(self, query: str, user_goal: str) -> tuple[list[dict], str]:
+        """搜索 arXiv，结果太少时自动扩宽关键词重试。返回 (papers, 使用的关键词)。"""
+        result = search_papers(query, max_results=10)
+        parsed = json.loads(result)
+        papers = parsed.get("papers", []) if parsed.get("status") == "success" else []
+
+        if len(papers) < 3 and " AND " in query:
+            # 第一次重试：去掉 AND 之后的部分（用第一个关键词）
+            broader = query.split(" AND ")[0].strip()
+            if broader != query:
+                self.memory.add_message("system", f"[重试] 结果太少，扩宽关键词: {broader}")
+                result2 = search_papers(broader, max_results=10)
+                parsed2 = json.loads(result2)
+                if parsed2.get("status") == "success":
+                    papers2 = parsed2.get("papers", [])
+                    # 合并去重
+                    existing_ids = {p["paper_id"] for p in papers}
+                    for p in papers2:
+                        if p["paper_id"] not in existing_ids:
+                            papers.append(p)
+                            existing_ids.add(p["paper_id"])
+                query = broader
+
+        if len(papers) < 3 and user_goal != query:
+            # 第二次重试：用中文原文
+            self.memory.add_message("system", f"[重试] 结果仍不足，用中文原文搜索")
+            result3 = search_papers(user_goal, max_results=10)
+            parsed3 = json.loads(result3)
+            if parsed3.get("status") == "success":
+                papers3 = parsed3.get("papers", [])
+                existing_ids = {p["paper_id"] for p in papers}
+                for p in papers3:
+                    if p["paper_id"] not in existing_ids:
+                        papers.append(p)
+                query = user_goal
+
+        return papers, query
+
     def _run_pipeline(self, user_goal: str) -> str:
         """首次提问：走完整流水线"""
         memory = self.memory
@@ -223,15 +261,11 @@ class ResearchAgent:
         query = self._parse_intent(user_goal)
         memory.add_message("system", f"[解析意图] 搜索关键词: {query}")
 
-        # Step 2: 先查知识库，再搜 arXiv
+        # Step 2: 先查知识库，再搜 arXiv（结果太少自动扩宽重试）
         kb_papers = self.vector_store.search(query, top_k=5)
-        memory.kb_papers = [p for p in kb_papers if p.get("score", 0) > 0.3]  # 相似度 > 0.3 的才保留
+        memory.kb_papers = [p for p in kb_papers if p.get("score", 0) > 0.3]
 
-        result = search_papers(query, max_results=10)
-        parsed = json.loads(result)
-        if parsed.get("status") != "success":
-            return f"搜索论文失败: {parsed.get('message', '未知错误')}"
-        memory.papers = parsed.get("papers", [])
+        memory.papers, final_query = self._search_with_fallback(query, user_goal)
         memory.add_message("system", f"[搜索] 找到 {len(memory.papers)} 篇论文")
 
         if not memory.papers:
@@ -301,11 +335,16 @@ class ResearchAgent:
                     {"role": "user", "content": user_goal},
                 ],
                 temperature=0.1,
-                max_tokens=100,
+                max_tokens=200,
             )
-            query = response.choices[0].message.content.strip()
-            # 去除可能的引号
-            query = query.strip('"').strip("'").strip()
+            content = response.choices[0].message.content.strip()
+            # 只取第一行作为搜索关键词（后面可能有子方向分析）
+            query = content.split("\n")[0].strip()
+            # 去除可能的引号和 markdown 标记
+            query = query.strip('"').strip("'").strip("#").strip()
+            # 把子方向分析存入 memory 供后续参考
+            if "\n" in content:
+                self.memory.add_message("system", f"[意图分析] {content.split(chr(10), 1)[1][:300]}")
             return query
         except Exception:
             # 降级：直接用中文
@@ -376,6 +415,17 @@ class ResearchAgent:
 
         if comparison:
             context_parts.append(f"\n横向对比：\n{comparison[:2000]}")
+
+        # 知识库关联：如果有相似度 > 0.4 的已读论文，提示 LLM 主动关联
+        if memory.kb_papers:
+            kb_lines = []
+            for kp in memory.kb_papers[:5]:
+                kb_lines.append(f"- **{kp.get('title', 'N/A')}** ({kp.get('paper_id', '')}) | 相似度: {kp.get('score', 0):.2f}")
+            context_parts.append(
+                f"\n⚠️ 重要：用户在知识库中已读过以下相关论文，请在回复中主动提及关联关系：\n"
+                + "\n".join(kb_lines) +
+                "\n（如果新论文和已读论文是同一条研究线、或是对已读论文的改进，请明确指出）"
+            )
 
         return RESPOND_PROMPT % (user_goal, "\n".join(context_parts))
 

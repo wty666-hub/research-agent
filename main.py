@@ -39,6 +39,37 @@ if "messages" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = _load_history()
 
+def _build_report(agent, messages: list[dict]) -> str:
+    """从当前对话构建 Markdown 报告"""
+    mem = agent.memory
+    lines = []
+    lines.append(f"# 研究报告：{mem.user_goal}\n")
+    lines.append(f"*生成时间：{time.strftime('%Y-%m-%d %H:%M')}*\n")
+
+    if mem.selected_papers:
+        lines.append("## 📚 筛选出的论文\n")
+        for i, p in enumerate(mem.selected_papers):
+            lines.append(f"### {i+1}. [{p.get('title', 'N/A')}]({p.get('url', '')})")
+            lines.append(f"- **作者**: {', '.join(p.get('authors', [])[:5])}")
+            lines.append(f"- **日期**: {p.get('published', 'N/A')}")
+            lines.append(f"- **arXiv**: {p.get('url', '')}")
+            lines.append(f"- **摘要**: {p.get('summary', '')}")
+            lines.append("")
+
+    if mem.paper_notes:
+        lines.append("## 📝 论文笔记\n")
+        for pid, notes in mem.paper_notes.items():
+            lines.append(f"### {pid}\n")
+            lines.append(notes)
+            lines.append("")
+
+    lines.append("## 💬 对话记录\n")
+    for msg in messages:
+        role = "👤 用户" if msg["role"] == "user" else "🤖 Agent"
+        lines.append(f"**{role}**: {msg['content']}\n")
+
+    return "\n".join(lines)
+
 def title_of(msgs):
     for m in msgs:
         if m["role"] == "user":
@@ -97,7 +128,7 @@ with st.sidebar:
         st.session_state.history = []
         st.rerun()
 
-    # ---- 当前论文列表 ----
+    # ---- 当前论文列表 + 导出 ----
     mem = agent.memory
     if mem.selected_papers:
         st.divider()
@@ -110,6 +141,16 @@ with st.sidebar:
                 st.markdown(f"[arXiv]({p.get('url', '')}) · [PDF]({p.get('pdf_url', '')})")
         if mem.paper_notes:
             st.markdown("**笔记**: " + ", ".join(mem.paper_notes.keys()))
+
+        # 导出 Markdown 报告
+        if st.button("📥 导出 Markdown 报告", use_container_width=True):
+            md = _build_report(agent, st.session_state.messages)
+            st.download_button(
+                label="点击下载报告",
+                data=md,
+                file_name=f"research_report_{mem.user_goal[:20] or 'report'}.md",
+                mime="text/markdown",
+            )
 
     # ---- 已读论文库（ChromaDB） ----
     st.divider()
