@@ -22,6 +22,9 @@ chroma_db/
 papers/
 *.pdf
 
+# 对话历史（本地运行时数据）
+chat_history.json
+
 # 系统文件
 .DS_Store
 Thumbs.db
